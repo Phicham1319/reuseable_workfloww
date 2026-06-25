@@ -57,6 +57,8 @@ export type NodeDef = {
   schema: z.ZodTypeAny;
   run: (cfg: any, input: Envelope, ctx: Ctx) => Promise<Envelope>;
   meta: { label: string; description: string };
+  /** จำนวน retry ต่อ node (default 0) — interpreter วน retry เอง (Inngest v4 ไม่มี per-step retries) */
+  retries?: number;
 };
 
 /** helper สร้าง Envelope สั้น ๆ */
