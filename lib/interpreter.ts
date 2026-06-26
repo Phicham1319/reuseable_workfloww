@@ -86,13 +86,20 @@ export async function runGraph(
         continue;
       }
       if (node.onError === "route") {
-        const errEdge = graph.edges.find((e) => e.from === node.id && e.label === "error");
-        current = errEdge ? byId.get(errEdge.to) : undefined;
+        current = edgeTarget(byId, graph, node, "error");
         continue;
       }
       // stop (default)
       halted = true;
       break;
+    }
+
+    // branch: ถ้า node คาย data.__branch → เดิน edge ตาม label นั้น (if / router)
+    if (out.data && typeof (out.data as Record<string, unknown>).__branch === "string") {
+      const { __branch, ...rest } = out.data as Record<string, unknown>;
+      envelope = { ...out, data: rest }; // strip __branch ก่อนส่งต่อ
+      current = edgeTarget(byId, graph, node, String(__branch));
+      continue;
     }
 
     envelope = out;
@@ -109,6 +116,17 @@ export async function runGraph(
 function nextNode(byId: Map<string, Node>, node: Node): Node | undefined {
   const nextId = node.next[0];
   return nextId ? byId.get(nextId) : undefined;
+}
+
+/** เลือก node ปลายทางตาม edge label (if true/false · error route) */
+function edgeTarget(
+  byId: Map<string, Node>,
+  graph: Graph,
+  node: Node,
+  label: string,
+): Node | undefined {
+  const edge = graph.edges.find((e) => e.from === node.id && e.label === label);
+  return edge ? byId.get(edge.to) : undefined;
 }
 
 /** เขียน NodeRun เป็น step แยก (เขียนเสมอ ทั้ง success/failed) */

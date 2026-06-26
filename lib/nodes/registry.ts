@@ -2,6 +2,7 @@ import type { NodeDef } from "@/lib/graph";
 import { trigger } from "./trigger";
 import { transform } from "./transform";
 import { aiInstruct } from "./ai-instruct";
+import { ifNode } from "./if";
 
 /**
  * สมุดรายชื่อ node — key ต้องตรงกับ node.type ใน graph
@@ -11,4 +12,5 @@ export const registry: Record<string, NodeDef> = {
   trigger,
   transform,
   "ai.instruct": aiInstruct,
+  if: ifNode,
 };
