@@ -5,6 +5,7 @@ import { aiInstruct } from "./ai-instruct";
 import { ifNode } from "./if";
 import { httpRequest } from "./http-request";
 import { emailSend } from "./email-send";
+import { setFields } from "./set-fields";
 
 /**
  * สมุดรายชื่อ node — key ต้องตรงกับ node.type ใน graph
@@ -17,4 +18,5 @@ export const registry: Record<string, NodeDef> = {
   if: ifNode,
   "http.request": httpRequest,
   "email.send": emailSend,
+  set: setFields,
 };
