@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { registry } from "@/lib/nodes/registry";
+import { resolveConfig } from "@/lib/template";
 import { ok, fail, type Envelope, type Graph, type Node } from "@/lib/graph";
 
 /** structural type ของ Inngest step (ใช้แค่ .run) */
@@ -24,6 +25,8 @@ export async function runGraph(
 ): Promise<{ status: "success" | "failed" }> {
   const byId = new Map<string, Node>(graph.nodes.map((n) => [n.id, n]));
   const visited = new Set<string>();
+  /** ผลของทุก node ที่รันแล้ว (B-lite) — ให้ {{nodeId.field}} อ้างได้ */
+  const outputs: Record<string, unknown> = {};
 
   let current: Node | undefined =
     graph.nodes.find((n) => n.type === "trigger") ?? graph.nodes[0];
@@ -56,12 +59,25 @@ export async function runGraph(
     const inputEnvelope = envelope;
     const maxRetries = def.retries ?? 0;
 
+    // inline templating (B-lite): แทน {{path}} ใน config ก่อนรัน
+    // {{nodeId.field}} = จาก outputs map · {{field}} = ผล node ก่อนหน้า (inputEnvelope.data)
+    // อ่านข้อมูลอย่างเดียว/deterministic → resolve นอก step.run ได้ (ไม่ต้อง durable)
+    const { config: resolvedConfig, missing } = resolveConfig(node.config, {
+      steps: outputs,
+      data: inputEnvelope.data,
+    });
+    if (missing.length > 0) {
+      console.warn(
+        `[${runId}/${node.id}] template paths not found: ${missing.join(", ")}`,
+      );
+    }
+
     // per-node retry loop (D3) — Inngest v4 ไม่มี per-step retries
     let out: Envelope = fail("not run");
     for (let attempt = 0; ; attempt++) {
       try {
         out = (await step.run(`${node.id}#${attempt}`, () =>
-          def.run(node.config, inputEnvelope, {
+          def.run(resolvedConfig, inputEnvelope, {
             runId,
             nodeId: node.id,
             log: (m: string) => console.log(`[${runId}/${node.id}] ${m}`),
@@ -79,6 +95,7 @@ export async function runGraph(
     await logNode(step, runId, node.id, out, inputEnvelope);
     visited.add(node.id);
     steps++;
+    outputs[node.id] = out.data; // เก็บผลให้ node หลังอ้างผ่าน {{node.id.field}}
 
     if (out.status === "failed") {
       if (node.onError === "continue") {
@@ -118,7 +135,7 @@ function nextNode(byId: Map<string, Node>, node: Node): Node | undefined {
   return nextId ? byId.get(nextId) : undefined;
 }
 
-/** เลือก node ปลายทางตาม edge label (if true/false · error route) */
+/** เลือก node ปลายทางตาม edge label (if true/false · error route) — D4 */
 function edgeTarget(
   byId: Map<string, Node>,
   graph: Graph,
