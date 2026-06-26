@@ -3,6 +3,7 @@ import { trigger } from "./trigger";
 import { transform } from "./transform";
 import { aiInstruct } from "./ai-instruct";
 import { ifNode } from "./if";
+import { httpRequest } from "./http-request";
 
 /**
  * สมุดรายชื่อ node — key ต้องตรงกับ node.type ใน graph
@@ -13,4 +14,5 @@ export const registry: Record<string, NodeDef> = {
   transform,
   "ai.instruct": aiInstruct,
   if: ifNode,
+  "http.request": httpRequest,
 };
