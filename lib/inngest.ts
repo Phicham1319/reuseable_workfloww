@@ -2,6 +2,7 @@ import { Inngest } from "inngest";
 import { prisma } from "@/lib/db";
 import { GraphSchema } from "@/lib/graph";
 import { runGraph } from "@/lib/interpreter";
+import { isScheduleDue, type Schedule } from "@/lib/schedule";
 
 export const inngest = new Inngest({ id: "workflow-builder" });
 
@@ -22,9 +23,10 @@ export const hello = inngest.createFunction(
 export const runWorkflow = inngest.createFunction(
   { id: "run-workflow", retries: 0, triggers: [{ event: "workflow.run" }] },
   async ({ event, step }) => {
-    const { workflowId, payload } = event.data as {
+    const { workflowId, payload, trigger } = event.data as {
       workflowId: string;
       payload?: Record<string, unknown>;
+      trigger?: string;
     };
 
     const wf = await step.run("load-workflow", () =>
@@ -34,7 +36,7 @@ export const runWorkflow = inngest.createFunction(
 
     const run = await step.run("create-run", () =>
       prisma.run.create({
-        data: { workflowId, status: "running", trigger: "manual" },
+        data: { workflowId, status: "running", trigger: trigger ?? "manual" },
       }),
     );
 
@@ -51,4 +53,39 @@ export const runWorkflow = inngest.createFunction(
   },
 );
 
-export const functions = [hello, runWorkflow];
+/**
+ * scheduler — cron ทุกนาที อ่าน workflow ที่ตั้งเวลา (trigger.config.schedule) → ยิง workflow.run
+ * preset (no-dep, UTC): manual · hourly · daily · weekdays · weekly  (ดู lib/schedule.ts)
+ * custom cron ค่อยเพิ่ม cron-parser ทีหลัง
+ */
+export const scheduler = inngest.createFunction(
+  { id: "scheduler", triggers: { cron: "* * * * *" } },
+  async ({ step }) => {
+    const wfs = await step.run("load-workflows", () => prisma.workflow.findMany());
+
+    const now = new Date();
+    const due: string[] = [];
+    for (const wf of wfs) {
+      const parsed = GraphSchema.safeParse(wf.graph);
+      if (!parsed.success) continue;
+      const trig = parsed.data.nodes.find((n) => n.type === "trigger");
+      const sch = trig?.config?.schedule as Schedule | undefined;
+      if (isScheduleDue(sch, now)) due.push(wf.id);
+    }
+
+    await Promise.all(
+      due.map((id) =>
+        step.run(`fire-${id}`, () =>
+          inngest.send({
+            name: "workflow.run",
+            data: { workflowId: id, trigger: "schedule", payload: { scheduledAt: now.toISOString() } },
+          }),
+        ),
+      ),
+    );
+
+    return { fired: due };
+  },
+);
+
+export const functions = [hello, runWorkflow, scheduler];
