@@ -32,6 +32,8 @@ export const setFields: NodeDef = {
     description: "จัด/แปลงข้อมูลแบบไม่ต้องเขียนโค้ด (เลือก field จากข้อมูล หรือใส่ค่าคงที่)",
   },
   retries: 0,
+  outputFields: (cfg) =>
+    Array.isArray(cfg?.fields) ? cfg.fields.map((f: { name: string }) => f.name) : [],
   run: async (cfg, input) => {
     const out: Record<string, unknown> = cfg.keepOnly ? {} : { ...input.data };
     for (const f of cfg.fields as { name: string; source?: string; value?: string }[]) {

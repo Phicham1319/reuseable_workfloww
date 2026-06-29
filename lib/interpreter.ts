@@ -72,22 +72,34 @@ export async function runGraph(
       );
     }
 
-    // per-node retry loop (D3) — Inngest v4 ไม่มี per-step retries
+    // validate config ที่ resolve แล้วกับ schema ของ node (trust boundary — D7)
+    const checked = def.schema.safeParse(resolvedConfig);
+
     let out: Envelope = fail("not run");
-    for (let attempt = 0; ; attempt++) {
-      try {
-        out = (await step.run(`${node.id}#${attempt}`, () =>
-          def.run(resolvedConfig, inputEnvelope, {
-            runId,
-            nodeId: node.id,
-            log: (m: string) => console.log(`[${runId}/${node.id}] ${m}`),
-          }),
-        )) as Envelope;
-        break;
-      } catch (e) {
-        if (attempt >= maxRetries) {
-          out = fail(e instanceof Error ? e.message : String(e));
+    if (!checked.success) {
+      out = fail(
+        "invalid config: " +
+          checked.error.issues
+            .map((i) => `${i.path.join(".")} ${i.message}`)
+            .join("; "),
+      );
+    } else {
+      // per-node retry loop (D3) — Inngest v4 ไม่มี per-step retries
+      for (let attempt = 0; ; attempt++) {
+        try {
+          out = (await step.run(`${node.id}#${attempt}`, () =>
+            def.run(checked.data, inputEnvelope, {
+              runId,
+              nodeId: node.id,
+              log: (m: string) => console.log(`[${runId}/${node.id}] ${m}`),
+            }),
+          )) as Envelope;
           break;
+        } catch (e) {
+          if (attempt >= maxRetries) {
+            out = fail(e instanceof Error ? e.message : String(e));
+            break;
+          }
         }
       }
     }

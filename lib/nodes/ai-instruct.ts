@@ -46,6 +46,10 @@ export const aiInstruct: NodeDef = {
     description: "ให้ AI ประมวลผลข้อมูลแล้วคืนผลลัพธ์ (ระบุ field ที่อยากได้ หรือเว้นว่างเพื่อรับข้อความ)",
   },
   retries: 2, // randomness → retry มักผ่าน
+  outputFields: (cfg) =>
+    cfg?.outputSchema?.length
+      ? cfg.outputSchema.map((f: { name: string }) => f.name)
+      : ["text"],
   run: async (cfg, input) => {
     const schema =
       cfg.outputSchema && cfg.outputSchema.length > 0

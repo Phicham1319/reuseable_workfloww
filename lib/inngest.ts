@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { GraphSchema } from "@/lib/graph";
 import { runGraph } from "@/lib/interpreter";
 import { isScheduleDue, type Schedule } from "@/lib/schedule";
+import { sendAlert } from "@/lib/notify";
 
 export const inngest = new Inngest({ id: "workflow-builder" });
 
@@ -40,16 +41,40 @@ export const runWorkflow = inngest.createFunction(
       }),
     );
 
-    const result = await runGraph(graph, run.id, step, payload ?? {});
-
-    await step.run("finalize", () =>
-      prisma.run.update({
-        where: { id: run.id },
-        data: { status: result.status },
-      }),
-    );
-
-    return { runId: run.id, status: result.status };
+    try {
+      const result = await runGraph(graph, run.id, step, payload ?? {});
+      await step.run("finalize", () =>
+        prisma.run.update({
+          where: { id: run.id },
+          data: { status: result.status },
+        }),
+      );
+      if (result.status === "failed") {
+        await step.run("alert", async () => {
+          const fails = await prisma.nodeRun.findMany({
+            where: { runId: run.id, status: "failed" },
+          });
+          await sendAlert(
+            `❌ Workflow "${wf.name}" failed`,
+            `Run: ${run.id}\n` +
+              fails.map((f) => `- ${f.nodeId}: ${f.error}`).join("\n"),
+          );
+        });
+      }
+      return { runId: run.id, status: result.status };
+    } catch (e) {
+      // crash ที่ไม่คาด → ยังบันทึก Run = failed (Run.status คือความจริง)
+      await step.run("finalize-error", () =>
+        prisma.run.update({ where: { id: run.id }, data: { status: "failed" } }),
+      );
+      await step.run("alert-error", () =>
+        sendAlert(
+          `❌ Workflow "${wf.name}" crashed`,
+          `Run: ${run.id}\n${e instanceof Error ? e.message : String(e)}`,
+        ),
+      );
+      throw e;
+    }
   },
 );
 

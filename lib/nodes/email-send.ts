@@ -15,6 +15,7 @@ export const emailSend: NodeDef = {
   }),
   meta: { label: "Send Email", description: "ส่งอีเมล (ผ่าน Resend)" },
   retries: 1, // กันส่งซ้ำเยอะ
+  outputFields: () => ["sent", "id"],
   run: async (cfg) => {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) throw new Error("Missing RESEND_API_KEY");

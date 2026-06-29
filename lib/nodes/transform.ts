@@ -14,6 +14,7 @@ export const transform: NodeDef = {
   schema: z.object({ expression: z.string() }),
   meta: { label: "Transform", description: "แปลงข้อมูลด้วย JS expression บน data" },
   retries: 0, // deterministic — retry ไม่ช่วย
+  outputFields: () => [], // JS expression — เดาไม่ได้
   run: async (cfg, input) => {
     const fn = new Function("data", `"use strict"; return (${cfg.expression});`);
     const result = fn(input.data);

@@ -41,6 +41,7 @@ export const ifNode: NodeDef = {
   }),
   meta: { label: "If", description: "แตกทาง true/false ตามเงื่อนไขบนข้อมูล" },
   retries: 0,
+  outputFields: () => [], // ส่ง input ผ่าน (ไม่เพิ่ม field ใหม่)
   run: async (cfg, input) => {
     const left = getPath(input.data, cfg.field);
     const result = evaluate(left, cfg.op, cfg.value);

@@ -16,6 +16,7 @@ export const httpRequest: NodeDef = {
   }),
   meta: { label: "HTTP Request", description: "ยิง HTTP request ไปยัง URL ภายนอก" },
   retries: 2, // network สะดุดชั่วคราว → retry ช่วย
+  outputFields: () => ["status", "body"],
   run: async (cfg, input) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), cfg.timeoutMs ?? 10000);
