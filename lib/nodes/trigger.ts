@@ -8,7 +8,7 @@ export const trigger: NodeDef = {
     schedule: z
       .object({
         preset: z.enum(["manual", "hourly", "daily", "weekdays", "weekly"]),
-        at: z.string().optional(), // "HH:MM" (daily/weekdays/weekly)
+        at: z.string().optional(),     // "HH:MM" (daily/weekdays/weekly)
         minute: z.number().optional(), // hourly
         days: z.array(z.number()).optional(), // weekly (0=Sun..6=Sat)
       })
@@ -17,5 +17,8 @@ export const trigger: NodeDef = {
   meta: { label: "Trigger", description: "จุดเริ่ม workflow (manual / webhook / schedule)" },
   retries: 0,
   outputFields: () => [], // payload ภายนอก — เดาไม่ได้ (B fallback ดู NodeRun ล่าสุด)
-  run: async (_cfg, input) => ok(input.data),
+  run: async (_cfg, input, ctx) => {
+    ctx.log(`trigger fired with keys: ${Object.keys(input.data).join(", ") || "(empty)"}`);
+    return ok(input.data);
+  },
 };

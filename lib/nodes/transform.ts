@@ -4,6 +4,7 @@ import { ok, type NodeDef } from "@/lib/graph";
 /**
  * แปลงข้อมูลด้วย JS expression สั้น ๆ บน input.data
  * เช่น expression = "{ name: data.firstName, n: data.score + 1 }"
+ * expression เข้าถึง `data` (=input.data) และ `input` (envelope เต็ม)
  *
  * TODO(security): raw new Function — ยอมรับใน v1 เพราะ expression เขียนโดย
  * author ที่เชื่อถือได้ (build-time) + ไม่มี multi-tenant + Day 7 มี auth กั้น author.
@@ -15,11 +16,14 @@ export const transform: NodeDef = {
   meta: { label: "Transform", description: "แปลงข้อมูลด้วย JS expression บน data" },
   retries: 0, // deterministic — retry ไม่ช่วย
   outputFields: () => [], // JS expression — เดาไม่ได้
-  run: async (cfg, input) => {
-    const fn = new Function("data", `"use strict"; return (${cfg.expression});`);
-    const result = fn(input.data);
+  run: async (cfg, input, ctx) => {
+    ctx.log(`transform: ${cfg.expression}`);
+    const fn = new Function("data", "input", `"use strict"; return (${cfg.expression});`);
+    const result = fn(input.data, input);
     return ok(
-      result && typeof result === "object" ? result : { value: result },
+      result && typeof result === "object" && !Array.isArray(result)
+        ? (result as Record<string, unknown>)
+        : { value: result },
     );
   },
 };

@@ -42,10 +42,10 @@ export const ifNode: NodeDef = {
   meta: { label: "If", description: "แตกทาง true/false ตามเงื่อนไขบนข้อมูล" },
   retries: 0,
   outputFields: () => [], // ส่ง input ผ่าน (ไม่เพิ่ม field ใหม่)
-  run: async (cfg, input) => {
+  run: async (cfg, input, ctx) => {
     const left = getPath(input.data, cfg.field);
     const result = evaluate(left, cfg.op, cfg.value);
-    // ส่ง data เดิมต่อ + แนบ __branch ให้ interpreter เลือก edge
+    ctx.log(`if: ${cfg.field}=${JSON.stringify(left)} ${cfg.op} ${cfg.value} → ${result}`);
     return {
       status: "success",
       data: { ...input.data, __branch: result ? "true" : "false" },

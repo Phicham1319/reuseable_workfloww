@@ -29,18 +29,15 @@ export const runWorkflow = inngest.createFunction(
       payload?: Record<string, unknown>;
       trigger?: string;
     };
-
     const wf = await step.run("load-workflow", () =>
       prisma.workflow.findUniqueOrThrow({ where: { id: workflowId } }),
     );
     const graph = GraphSchema.parse(wf.graph);
-
     const run = await step.run("create-run", () =>
       prisma.run.create({
         data: { workflowId, status: "running", trigger: trigger ?? "manual" },
       }),
     );
-
     try {
       const result = await runGraph(graph, run.id, step, payload ?? {});
       await step.run("finalize", () =>
@@ -87,7 +84,6 @@ export const scheduler = inngest.createFunction(
   { id: "scheduler", triggers: { cron: "* * * * *" } },
   async ({ step }) => {
     const wfs = await step.run("load-workflows", () => prisma.workflow.findMany());
-
     const now = new Date();
     const due: string[] = [];
     for (const wf of wfs) {
@@ -97,7 +93,6 @@ export const scheduler = inngest.createFunction(
       const sch = trig?.config?.schedule as Schedule | undefined;
       if (isScheduleDue(sch, now)) due.push(wf.id);
     }
-
     await Promise.all(
       due.map((id) =>
         step.run(`fire-${id}`, () =>
@@ -108,7 +103,6 @@ export const scheduler = inngest.createFunction(
         ),
       ),
     );
-
     return { fired: due };
   },
 );

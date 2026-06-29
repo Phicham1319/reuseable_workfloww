@@ -29,13 +29,21 @@ export default function Home() {
         Day 1 scaffold — Next.js · Prisma · Inngest · AI SDK · React Flow
       </p>
 
-      <button
-        onClick={fireHello}
-        disabled={loading}
-        className="mt-8 w-fit rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {loading ? "Sending…" : "ยิง hello-world event"}
-      </button>
+      <div className="mt-8 flex items-center gap-3">
+        <button
+          onClick={fireHello}
+          disabled={loading}
+          className="w-fit rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {loading ? "Sending…" : "ยิง hello-world event"}
+        </button>
+        <a
+          href="/canvas"
+          className="w-fit rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+        >
+          เปิด Canvas →
+        </a>
+      </div>
 
       {result && (
         <pre className="mt-6 overflow-x-auto rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-xs dark:border-zinc-800 dark:bg-zinc-900">

@@ -20,3 +20,14 @@ export const registry: Record<string, NodeDef> = {
   "email.send": emailSend,
   set: setFields,
 };
+
+export type NodeType = keyof typeof registry;
+
+/** metadata สำหรับ palette/AI helper (serialize ส่ง client ได้) */
+export function nodeMetas() {
+  return Object.entries(registry).map(([type, def]) => ({
+    type,
+    label: def.meta.label,
+    description: def.meta.description,
+  }));
+}
