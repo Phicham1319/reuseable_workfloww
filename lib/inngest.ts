@@ -81,7 +81,7 @@ export const runWorkflow = inngest.createFunction(
  * custom cron ค่อยเพิ่ม cron-parser ทีหลัง
  */
 export const scheduler = inngest.createFunction(
-  { id: "scheduler", triggers: { cron: "* * * * *" } },
+  { id: "scheduler", triggers: [{ cron: "* * * * *" }] },
   async ({ step }) => {
     const wfs = await step.run("load-workflows", () => prisma.workflow.findMany());
     const now = new Date();
@@ -107,4 +107,4 @@ export const scheduler = inngest.createFunction(
   },
 );
 
-export const functions = [hello, runWorkflow, scheduler];
+export const functions = [hello, runWorkflow];

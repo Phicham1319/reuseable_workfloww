@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FieldSpec } from "./nodes/types";
 
 /**
  * CONTRACT ร่วมระหว่างทีม A (engine) กับทีม B (canvas).
@@ -56,7 +57,7 @@ export type Ctx = {
 export type NodeDef = {
   schema: z.ZodTypeAny;
   run: (cfg: any, input: Envelope, ctx: Ctx) => Promise<Envelope>;
-  meta: { label: string; description: string };
+  meta: { label: string; description: string, fields: FieldSpec[] };
   /** จำนวน retry ต่อ node (default 0) — interpreter วน retry เอง (Inngest v4 ไม่มี per-step retries) */
   retries?: number;
   /**

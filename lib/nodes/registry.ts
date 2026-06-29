@@ -29,5 +29,6 @@ export function nodeMetas() {
     type,
     label: def.meta.label,
     description: def.meta.description,
+    fields: def.meta.fields,
   }));
 }

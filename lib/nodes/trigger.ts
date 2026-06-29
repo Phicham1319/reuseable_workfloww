@@ -14,7 +14,7 @@ export const trigger: NodeDef = {
       })
       .optional(),
   }),
-  meta: { label: "Trigger", description: "จุดเริ่ม workflow (manual / webhook / schedule)" },
+  meta: { label: "Trigger", description: "จุดเริ่ม workflow (manual / webhook / schedule)", fields: [] },
   retries: 0,
   outputFields: () => [], // payload ภายนอก — เดาไม่ได้ (B fallback ดู NodeRun ล่าสุด)
   run: async (_cfg, input, ctx) => {

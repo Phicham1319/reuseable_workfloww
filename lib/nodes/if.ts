@@ -28,6 +28,18 @@ function evaluate(left: unknown, op: string, value: string): boolean {
   }
 }
 
+const OPERATORS = [
+  "eq",
+  "neq",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "contains",
+  "truthy",
+  "exists",
+] as const;
+
 /**
  * if — เทียบ input.data.<field> กับ value แล้วแตกทาง
  * interpreter จะอ่าน data.__branch ("true"/"false") แล้วเดิน edge ที่ label ตรงกัน
@@ -39,7 +51,21 @@ export const ifNode: NodeDef = {
     op: z.enum(["==", "!=", ">", "<", ">=", "<="]),
     value: z.string(),
   }),
-  meta: { label: "If", description: "แตกทาง true/false ตามเงื่อนไขบนข้อมูล" },
+  meta: { 
+    label: "If", 
+    description: "แตกทาง true/false ตามเงื่อนไขบนข้อมูล",
+    fields: [
+      { name: "field", label: "Field path", kind: "text", required: true, placeholder: "decision" },
+      {
+        name: "operator",
+        label: "Operator",
+        kind: "select",
+        options: [...OPERATORS],
+        required: true,
+      },
+      { name: "value", label: "Value", kind: "text", placeholder: "approve" },
+    ]
+   },
   retries: 0,
   outputFields: () => [], // ส่ง input ผ่าน (ไม่เพิ่ม field ใหม่)
   run: async (cfg, input, ctx) => {

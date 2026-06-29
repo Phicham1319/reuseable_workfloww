@@ -13,7 +13,20 @@ import { ok, type NodeDef } from "@/lib/graph";
  */
 export const transform: NodeDef = {
   schema: z.object({ expression: z.string() }),
-  meta: { label: "Transform", description: "แปลงข้อมูลด้วย JS expression บน data" },
+  meta: { 
+    label: "Transform", 
+    description: "แปลงข้อมูลด้วย JS expression บน data",
+    fields: [
+      {
+        name: "expression",
+        label: "Expression",
+        kind: "textarea",
+        required: true,
+        placeholder: "{ fullName: data.first + ' ' + data.last }",
+        help: "JS expression — ใช้ `data` (input.data) และ `input` ได้",
+      },
+    ]
+   },
   retries: 0, // deterministic — retry ไม่ช่วย
   outputFields: () => [], // JS expression — เดาไม่ได้
   run: async (cfg, input, ctx) => {

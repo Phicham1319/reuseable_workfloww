@@ -14,7 +14,17 @@ export const httpRequest: NodeDef = {
     body: z.any().optional(),
     timeoutMs: z.coerce.number().default(10000), // form ส่ง string → coerce
   }),
-  meta: { label: "HTTP Request", description: "ยิง HTTP request ไปยัง URL ภายนอก" },
+  meta: { 
+    label: "HTTP Request", 
+    description: "ยิง HTTP request ไปยัง URL ภายนอก",
+    fields: [
+      { name: "url", label: "URL", kind: "text", required: true, placeholder: "https://api.example.com/data" },
+      { name: "method", label: "Method", kind: "select", options: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+      { name: "headers", label: "Headers (JSON)", kind: "json", placeholder: '{ "Authorization": "Bearer ..." }' },
+      { name: "body", label: "Body", kind: "textarea", placeholder: '{ "key": "value" }' },
+      { name: "timeoutMs", label: "Timeout (ms)", kind: "number", placeholder: "10000" },
+    ] 
+  },
   retries: 2, // network สะดุดชั่วคราว → retry ช่วย
   outputFields: () => ["status", "ok", "body"],
   run: async (cfg, _input, ctx) => {

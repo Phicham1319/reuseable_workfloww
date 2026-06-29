@@ -44,6 +44,30 @@ export const aiInstruct: NodeDef = {
   meta: {
     label: "AI Instruct",
     description: "ให้ AI ประมวลผลข้อมูลแล้วคืนผลลัพธ์ (ระบุ field ที่อยากได้ หรือเว้นว่างเพื่อรับข้อความ)",
+    fields: [
+      {
+        name: "prompt",
+        label: "Prompt",
+        kind: "textarea",
+        required: true,
+        placeholder: "วิเคราะห์เรซูเม่นี้: {{resume}}",
+        help: "ใช้ {{field}} เพื่อแทรกค่าจาก input.data",
+      },
+      {
+        name: "outputSchema",
+        label: "Output schema (JSON)",
+        kind: "json",
+        required: true,
+        placeholder: '{ "decision": { "type": "string", "enum": ["approve", "reject"] }, "score": "number", "reason": "string" }',
+        help: "shorthand { field: \"string\" } หรือ JSON Schema ย่อ",
+      },
+      {
+        name: "model",
+        label: "Model",
+        kind: "text",
+        placeholder: "gpt-4o-mini",
+      },
+    ]
   },
   retries: 2, // randomness → retry มักผ่าน
   outputFields: (cfg) =>

@@ -16,7 +16,13 @@ export const emailSend: NodeDef = {
   }),
   meta: {
     label: "Send Email",
-    description: "ส่งอีเมล (ผ่าน Resend · mock เมื่อไม่มี RESEND_API_KEY)",
+    description: "ส่งอีเมลผ่าน Resend (mock เมื่อไม่มี RESEND_API_KEY)",
+    fields: [
+      { name: "to", label: "To", kind: "text", required: true, placeholder: "user@example.com" },
+      { name: "from", label: "From", kind: "text", placeholder: "onboarding@resend.dev" },
+      { name: "subject", label: "Subject", kind: "text", required: true },
+      { name: "body", label: "Body (HTML/text)", kind: "textarea" },
+    ],
   },
   retries: 1, // กันส่งซ้ำเยอะ
   outputFields: () => ["sent", "id"],
