@@ -24,12 +24,13 @@ model Run {
   nodeRuns   NodeRun[]
 }
 model NodeRun {
-  id      String  @id @default(cuid())
-  runId   String
-  run     Run     @relation(fields: [runId], references: [id])
-  nodeId  String
-  status  String
-  input   Json?
-  output  Json?
-  error   String?
+  id        String   @id @default(cuid())
+  runId     String
+  run       Run      @relation(fields: [runId], references: [id])
+  nodeId    String
+  status    String
+  input     Json?
+  output    Json?
+  error     String?
+  createdAt DateTime @default(now())
 }
