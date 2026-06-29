@@ -57,6 +57,13 @@ export type NodeDef = {
   schema: z.ZodTypeAny;
   run: (cfg: any, input: Envelope, ctx: Ctx) => Promise<Envelope>;
   meta: { label: string; description: string };
+  /** จำนวน retry ต่อ node (default 0) — interpreter วน retry เอง (Inngest v4 ไม่มี per-step retries) */
+  retries?: number;
+  /**
+   * field ที่ node นี้คายออก (ให้ variable picker ของ B) — รับ config เพราะบาง node คายตาม config
+   * คืน [] ถ้าเดาไม่ได้ (เช่น trigger/transform) → B fallback ไปดู NodeRun.output ล่าสุด
+   */
+  outputFields?: (config: any) => string[];
 };
 
 /** helper สร้าง Envelope สั้น ๆ */

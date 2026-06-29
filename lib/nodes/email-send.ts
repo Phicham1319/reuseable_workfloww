@@ -1,54 +1,46 @@
 import { z } from "zod";
-import { ok, fail } from "@/lib/graph";
-import type { UiNodeDef } from "./types";
-
-const schema = z.object({
-  to: z.string().min(1),
-  subject: z.string().min(1),
-  body: z.string().default(""),
-  from: z.string().default("onboarding@resend.dev"),
-});
+import { ok, type NodeDef } from "@/lib/graph";
 
 /**
- * email.send — ส่งอีเมลผ่าน Resend (REST API).
- * ถ้าไม่มี RESEND_API_KEY จะ mock (log อย่างเดียว) เพื่อให้ dev รันได้
+ * email.send — ส่งอีเมลผ่าน Resend (HTTP API, ไม่ต้องลง SDK)
+ * key อยู่ใน env: RESEND_API_KEY (+ EMAIL_FROM optional)
+ * ไม่มี key → mock (log อย่างเดียว) ให้ dev รันได้
+ * ⚠️ at-least-once: ถ้าส่งสำเร็จแล้ว throw หลังจากนั้น retry อาจส่งซ้ำ (ยอมใน v1)
  */
-export const emailSendNode: UiNodeDef = {
-  schema,
+export const emailSend: NodeDef = {
+  schema: z.object({
+    to: z.string(),
+    subject: z.string(),
+    body: z.string(),
+    from: z.string().optional(),
+  }),
   meta: {
     label: "Send Email",
-    description: "ส่งอีเมลผ่าน Resend (mock เมื่อไม่มี RESEND_API_KEY)",
+    description: "ส่งอีเมล (ผ่าน Resend · mock เมื่อไม่มี RESEND_API_KEY)",
   },
-  fields: [
-    { name: "to", label: "To", kind: "text", required: true, placeholder: "user@example.com" },
-    { name: "from", label: "From", kind: "text", placeholder: "onboarding@resend.dev" },
-    { name: "subject", label: "Subject", kind: "text", required: true },
-    { name: "body", label: "Body (HTML/text)", kind: "textarea" },
-  ],
+  retries: 1, // กันส่งซ้ำเยอะ
+  outputFields: () => ["sent", "id"],
   run: async (cfg, _input, ctx) => {
-    const { to, subject, body, from } = schema.parse(cfg);
     const apiKey = process.env.RESEND_API_KEY;
-
     if (!apiKey) {
-      ctx.log(`[mock email] to=${to} subject="${subject}"`);
-      return ok({ mocked: true, to, subject });
+      ctx.log(`[mock email] to=${cfg.to} subject="${cfg.subject}"`);
+      return ok({ sent: false, mocked: true });
     }
-
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
       },
-      body: JSON.stringify({ from, to, subject, html: body }),
+      body: JSON.stringify({
+        from: cfg.from ?? process.env.EMAIL_FROM ?? "onboarding@resend.dev",
+        to: cfg.to,
+        subject: cfg.subject,
+        text: cfg.body,
+      }),
     });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      return fail(`resend ${res.status}: ${errText}`);
-    }
-    const json = (await res.json()) as { id?: string };
-    ctx.log(`email sent id=${json.id}`);
-    return ok({ id: json.id, to, subject });
+    const data = await res.json();
+    if (!res.ok) throw new Error(`Resend ${res.status}: ${JSON.stringify(data)}`);
+    return ok({ sent: true, id: (data as { id?: string }).id });
   },
 };

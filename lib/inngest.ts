@@ -1,6 +1,9 @@
-import { Inngest, NonRetriableError } from "inngest";
+import { Inngest } from "inngest";
 import { prisma } from "@/lib/db";
-import { runWorkflow, type StepRunner } from "@/lib/interpreter";
+import { GraphSchema } from "@/lib/graph";
+import { runGraph } from "@/lib/interpreter";
+import { isScheduleDue, type Schedule } from "@/lib/schedule";
+import { sendAlert } from "@/lib/notify";
 
 export const inngest = new Inngest({ id: "workflow-builder" });
 
@@ -15,70 +18,93 @@ export const hello = inngest.createFunction(
 );
 
 /**
- * workflow.run — interpreter ตัวเดียวที่ทุก trigger (UI/API/webhook/cron) มารวมกัน.
- * แต่ละ node = step.run() → ได้ durability + retry ในตัว.
- * retries: 3 → ถ้า node throw (เช่น AI output ไม่ตรง schema) จะ retry ก่อนจบเป็น failed.
- *
- * event.data: { runId?, workflowId?, graph?, payload?, trigger? }
- *  - runId มาจาก /api/run (สร้าง Run ไว้ล่วงหน้าแล้ว) → ใช้ตัวนั้นเลย
- *  - ยิง inngest.send ตรง ๆ ด้วยแค่ { graph } ก็ได้ (จะสร้าง Run/inline workflow ให้)
+ * รัน workflow (D2): event ส่ง { workflowId, payload } → โหลด graph จาก DB
+ * function retries: 0 — เราคุม retry เองราย node ใน interpreter (D3)
  */
-export const workflowRun = inngest.createFunction(
-  { id: "workflow-run", retries: 3, triggers: [{ event: "workflow.run" }] },
+export const runWorkflow = inngest.createFunction(
+  { id: "run-workflow", retries: 0, triggers: [{ event: "workflow.run" }] },
   async ({ event, step }) => {
-    const {
-      runId: providedRunId,
-      workflowId,
-      graph: inlineGraph,
-      payload = {},
-      trigger = "manual",
-    } = (event.data ?? {}) as {
-      runId?: string;
-      workflowId?: string;
-      graph?: unknown;
+    const { workflowId, payload, trigger } = event.data as {
+      workflowId: string;
       payload?: Record<string, unknown>;
       trigger?: string;
     };
-
-    const resolved = await step.run("resolve", async () => {
-      if (workflowId) {
-        const wf = await prisma.workflow.findUnique({ where: { id: workflowId } });
-        if (!wf) throw new NonRetriableError(`workflow not found: ${workflowId}`);
-        return { workflowId, graph: wf.graph as unknown };
-      }
-      if (inlineGraph) {
-        // เก็บ inline graph เป็น workflow ชั่วคราวเพื่อให้ Run อ้างถึงได้
-        const wf = await prisma.workflow.create({
-          data: { name: "inline", graph: inlineGraph as object },
+    const wf = await step.run("load-workflow", () =>
+      prisma.workflow.findUniqueOrThrow({ where: { id: workflowId } }),
+    );
+    const graph = GraphSchema.parse(wf.graph);
+    const run = await step.run("create-run", () =>
+      prisma.run.create({
+        data: { workflowId, status: "running", trigger: trigger ?? "manual" },
+      }),
+    );
+    try {
+      const result = await runGraph(graph, run.id, step, payload ?? {});
+      await step.run("finalize", () =>
+        prisma.run.update({
+          where: { id: run.id },
+          data: { status: result.status },
+        }),
+      );
+      if (result.status === "failed") {
+        await step.run("alert", async () => {
+          const fails = await prisma.nodeRun.findMany({
+            where: { runId: run.id, status: "failed" },
+          });
+          await sendAlert(
+            `❌ Workflow "${wf.name}" failed`,
+            `Run: ${run.id}\n` +
+              fails.map((f) => `- ${f.nodeId}: ${f.error}`).join("\n"),
+          );
         });
-        return { workflowId: wf.id, graph: inlineGraph };
       }
-      throw new NonRetriableError("workflow.run requires workflowId or graph");
-    });
-
-    const runId =
-      providedRunId ??
-      (await step.run("create-run", async () => {
-        const run = await prisma.run.create({
-          data: { workflowId: resolved.workflowId, status: "running", trigger },
-        });
-        return run.id;
-      }));
-
-    // inngest step.run คืน Jsonify<T> (serialize) — cast กลับเป็น T
-    // (ค่าที่ส่งคืนเป็น JSON อยู่แล้ว เช่น Envelope จึงปลอดภัย)
-    const stepRunner: StepRunner = <T,>(id: string, fn: () => Promise<T>) =>
-      step.run(id, fn) as Promise<T>;
-
-    const result = await runWorkflow({
-      graph: resolved.graph,
-      runId,
-      payload,
-      step: stepRunner,
-    });
-
-    return { runId, ...result };
+      return { runId: run.id, status: result.status };
+    } catch (e) {
+      // crash ที่ไม่คาด → ยังบันทึก Run = failed (Run.status คือความจริง)
+      await step.run("finalize-error", () =>
+        prisma.run.update({ where: { id: run.id }, data: { status: "failed" } }),
+      );
+      await step.run("alert-error", () =>
+        sendAlert(
+          `❌ Workflow "${wf.name}" crashed`,
+          `Run: ${run.id}\n${e instanceof Error ? e.message : String(e)}`,
+        ),
+      );
+      throw e;
+    }
   },
 );
 
-export const functions = [hello, workflowRun];
+/**
+ * scheduler — cron ทุกนาที อ่าน workflow ที่ตั้งเวลา (trigger.config.schedule) → ยิง workflow.run
+ * preset (no-dep, UTC): manual · hourly · daily · weekdays · weekly  (ดู lib/schedule.ts)
+ * custom cron ค่อยเพิ่ม cron-parser ทีหลัง
+ */
+export const scheduler = inngest.createFunction(
+  { id: "scheduler", triggers: { cron: "* * * * *" } },
+  async ({ step }) => {
+    const wfs = await step.run("load-workflows", () => prisma.workflow.findMany());
+    const now = new Date();
+    const due: string[] = [];
+    for (const wf of wfs) {
+      const parsed = GraphSchema.safeParse(wf.graph);
+      if (!parsed.success) continue;
+      const trig = parsed.data.nodes.find((n) => n.type === "trigger");
+      const sch = trig?.config?.schedule as Schedule | undefined;
+      if (isScheduleDue(sch, now)) due.push(wf.id);
+    }
+    await Promise.all(
+      due.map((id) =>
+        step.run(`fire-${id}`, () =>
+          inngest.send({
+            name: "workflow.run",
+            data: { workflowId: id, trigger: "schedule", payload: { scheduledAt: now.toISOString() } },
+          }),
+        ),
+      ),
+    );
+    return { fired: due };
+  },
+);
+
+export const functions = [hello, runWorkflow, scheduler];

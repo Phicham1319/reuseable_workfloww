@@ -1,83 +1,55 @@
 import { z } from "zod";
-import { ok } from "@/lib/graph";
-import type { UiNodeDef } from "./types";
+import { type NodeDef } from "@/lib/graph";
 
-const OPERATORS = [
-  "eq",
-  "neq",
-  "gt",
-  "gte",
-  "lt",
-  "lte",
-  "contains",
-  "truthy",
-  "exists",
-] as const;
-
-const schema = z.object({
-  field: z.string().min(1),
-  operator: z.enum(OPERATORS).default("eq"),
-  value: z.string().optional(),
-});
-
-function getField(data: Record<string, unknown>, path: string): unknown {
-  return path
-    .split(".")
-    .reduce<unknown>((acc, key) => (acc as Record<string, unknown>)?.[key], data);
+/** อ่านค่าตาม dot path เช่น "user.email" */
+function getPath(obj: unknown, path: string): unknown {
+  return path.split(".").reduce<unknown>((acc, key) => {
+    if (acc && typeof acc === "object") return (acc as Record<string, unknown>)[key];
+    return undefined;
+  }, obj);
 }
 
-function compare(actual: unknown, operator: string, expected?: string): boolean {
-  switch (operator) {
-    case "truthy":
-      return Boolean(actual);
-    case "exists":
-      return actual !== undefined && actual !== null;
-    case "contains":
-      return String(actual ?? "").includes(expected ?? "");
-    case "eq":
-      return String(actual) === String(expected);
-    case "neq":
-      return String(actual) !== String(expected);
-    case "gt":
-      return Number(actual) > Number(expected);
-    case "gte":
-      return Number(actual) >= Number(expected);
-    case "lt":
-      return Number(actual) < Number(expected);
-    case "lte":
-      return Number(actual) <= Number(expected);
+function evaluate(left: unknown, op: string, value: string): boolean {
+  switch (op) {
+    case "==":
+      return String(left) === value;
+    case "!=":
+      return String(left) !== value;
+    case ">":
+      return Number(left) > Number(value);
+    case "<":
+      return Number(left) < Number(value);
+    case ">=":
+      return Number(left) >= Number(value);
+    case "<=":
+      return Number(left) <= Number(value);
     default:
       return false;
   }
 }
 
 /**
- * if — เทียบค่า input.data.<field> กับ value ตาม operator
- * แล้วเลือกทางเดินผ่าน edge label "true"/"false".
- * (interpreter อ่าน data.__branch เพื่อเลือก edge)
+ * if — เทียบ input.data.<field> กับ value แล้วแตกทาง
+ * interpreter จะอ่าน data.__branch ("true"/"false") แล้วเดิน edge ที่ label ตรงกัน
+ * (ผู้ใช้/ฝั่ง B ต้องตั้ง edge ขาออกของ if เป็น label "true" และ "false")
  */
-export const ifNode: UiNodeDef = {
-  schema,
-  meta: {
-    label: "If / Branch",
-    description: "เทียบเงื่อนไขบน input.data แล้วแตกทางไป edge label true/false",
-  },
-  fields: [
-    { name: "field", label: "Field path", kind: "text", required: true, placeholder: "decision" },
-    {
-      name: "operator",
-      label: "Operator",
-      kind: "select",
-      options: [...OPERATORS],
-      required: true,
-    },
-    { name: "value", label: "Value", kind: "text", placeholder: "approve" },
-  ],
+export const ifNode: NodeDef = {
+  schema: z.object({
+    field: z.string(),
+    op: z.enum(["==", "!=", ">", "<", ">=", "<="]),
+    value: z.string(),
+  }),
+  meta: { label: "If", description: "แตกทาง true/false ตามเงื่อนไขบนข้อมูล" },
+  retries: 0,
+  outputFields: () => [], // ส่ง input ผ่าน (ไม่เพิ่ม field ใหม่)
   run: async (cfg, input, ctx) => {
-    const { field, operator, value } = schema.parse(cfg);
-    const actual = getField(input.data, field);
-    const result = compare(actual, operator, value);
-    ctx.log(`if: ${field} (${JSON.stringify(actual)}) ${operator} ${value ?? ""} → ${result}`);
-    return ok({ ...input.data, __branch: result ? "true" : "false" });
+    const left = getPath(input.data, cfg.field);
+    const result = evaluate(left, cfg.op, cfg.value);
+    ctx.log(`if: ${cfg.field}=${JSON.stringify(left)} ${cfg.op} ${cfg.value} → ${result}`);
+    return {
+      status: "success",
+      data: { ...input.data, __branch: result ? "true" : "false" },
+      error: null,
+    };
   },
 };

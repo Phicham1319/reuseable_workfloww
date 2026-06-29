@@ -1,42 +1,29 @@
 import { z } from "zod";
-import { ok } from "@/lib/graph";
-import type { UiNodeDef } from "./types";
+import { ok, type NodeDef } from "@/lib/graph";
 
 /**
- * transform — eval JS expression บน input.data.
- * ใช้ new Function (sandbox ทีหลังตามแผน Day 7).
- * expression เข้าถึงตัวแปร `data` (=input.data) และ `input` (envelope เต็ม).
- * ผลลัพธ์: ถ้าเป็น object → ใช้เป็น data ตรง ๆ, ถ้าไม่ใช่ → ห่อเป็น { value }
+ * แปลงข้อมูลด้วย JS expression สั้น ๆ บน input.data
+ * เช่น expression = "{ name: data.firstName, n: data.score + 1 }"
+ * expression เข้าถึง `data` (=input.data) และ `input` (envelope เต็ม)
+ *
+ * TODO(security): raw new Function — ยอมรับใน v1 เพราะ expression เขียนโดย
+ * author ที่เชื่อถือได้ (build-time) + ไม่มี multi-tenant + Day 7 มี auth กั้น author.
+ * payload ภายนอกเข้ามาเป็น "data" (ข้อมูล) ไม่ถูก execute เป็นโค้ด.
+ * harden ทีหลังด้วย worker thread + timeout / isolated-vm (กัน sync infinite loop + globals).
  */
-const schema = z.object({
-  expression: z.string().min(1),
-});
-
-export const transformNode: UiNodeDef = {
-  schema,
-  meta: {
-    label: "Transform",
-    description: "แปลงข้อมูลด้วย JS expression บน input.data (เช่น { name: data.first + ' ' + data.last })",
-  },
-  fields: [
-    {
-      name: "expression",
-      label: "Expression",
-      kind: "textarea",
-      required: true,
-      placeholder: "{ fullName: data.first + ' ' + data.last }",
-      help: "JS expression — ใช้ `data` (input.data) และ `input` ได้",
-    },
-  ],
+export const transform: NodeDef = {
+  schema: z.object({ expression: z.string() }),
+  meta: { label: "Transform", description: "แปลงข้อมูลด้วย JS expression บน data" },
+  retries: 0, // deterministic — retry ไม่ช่วย
+  outputFields: () => [], // JS expression — เดาไม่ได้
   run: async (cfg, input, ctx) => {
-    const { expression } = schema.parse(cfg);
-    ctx.log(`transform: ${expression}`);
-    const fn = new Function("data", "input", `"use strict"; return (${expression});`);
+    ctx.log(`transform: ${cfg.expression}`);
+    const fn = new Function("data", "input", `"use strict"; return (${cfg.expression});`);
     const result = fn(input.data, input);
-    const data =
+    return ok(
       result && typeof result === "object" && !Array.isArray(result)
         ? (result as Record<string, unknown>)
-        : { value: result };
-    return ok(data);
+        : { value: result },
+    );
   },
 };

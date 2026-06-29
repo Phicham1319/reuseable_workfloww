@@ -1,32 +1,33 @@
-import { triggerNode } from "./trigger";
-import { transformNode } from "./transform";
-import { aiInstructNode } from "./ai-instruct";
+import type { NodeDef } from "@/lib/graph";
+import { trigger } from "./trigger";
+import { transform } from "./transform";
+import { aiInstruct } from "./ai-instruct";
 import { ifNode } from "./if";
-import { httpRequestNode } from "./http-request";
-import { emailSendNode } from "./email-send";
-import type { UiNodeDef, NodeMeta } from "./types";
+import { httpRequest } from "./http-request";
+import { emailSend } from "./email-send";
+import { setFields } from "./set-fields";
 
 /**
- * Node registry — key = node.type ใน graph.
- * เพิ่ม node ใหม่ = เพิ่ม 1 entry ตรงนี้ (ไม่ต้องแตะ interpreter).
+ * สมุดรายชื่อ node — key ต้องตรงกับ node.type ใน graph
+ * เพิ่ม node ใหม่ = เพิ่ม 1 entry ที่นี่ (ไม่ต้องแตะ interpreter)
  */
-export const registry: Record<string, UiNodeDef> = {
-  trigger: triggerNode,
-  transform: transformNode,
-  "ai.instruct": aiInstructNode,
+export const registry: Record<string, NodeDef> = {
+  trigger,
+  transform,
+  "ai.instruct": aiInstruct,
   if: ifNode,
-  "http.request": httpRequestNode,
-  "email.send": emailSendNode,
+  "http.request": httpRequest,
+  "email.send": emailSend,
+  set: setFields,
 };
 
 export type NodeType = keyof typeof registry;
 
-/** metadata ที่ serialize ส่งให้ client ได้ (palette + config form) */
-export function nodeMetas(): NodeMeta[] {
+/** metadata สำหรับ palette/AI helper (serialize ส่ง client ได้) */
+export function nodeMetas() {
   return Object.entries(registry).map(([type, def]) => ({
     type,
     label: def.meta.label,
     description: def.meta.description,
-    fields: def.fields,
   }));
 }

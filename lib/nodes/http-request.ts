@@ -1,56 +1,48 @@
 import { z } from "zod";
-import { ok, fail } from "@/lib/graph";
-import { coerceSchema } from "@/lib/json-schema";
-import type { UiNodeDef } from "./types";
-
-const schema = z.object({
-  url: z.string().url(),
-  method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).default("GET"),
-  headers: z.any().optional(),
-  body: z.string().optional(),
-  timeoutMs: z.coerce.number().default(10000),
-});
+import { ok, type NodeDef } from "@/lib/graph";
 
 /**
- * http.request — fetch พร้อม timeout (AbortController).
- * คืน { status, ok, body } โดย body parse เป็น JSON ถ้าได้
+ * http.request — ยิง HTTP request ไปยัง URL ภายนอก (fetch + timeout)
+ * - ไม่ ok (status ไม่ 2xx) หรือ timeout/network → throw → Inngest retry
+ * - คืน { status, ok, body } (body parse เป็น JSON ถ้าทำได้ ไม่งั้นเป็น text)
  */
-export const httpRequestNode: UiNodeDef = {
-  schema,
-  meta: {
-    label: "HTTP Request",
-    description: "ยิง HTTP request (fetch) พร้อม timeout แล้วคืน status/body",
-  },
-  fields: [
-    { name: "url", label: "URL", kind: "text", required: true, placeholder: "https://api.example.com/data" },
-    { name: "method", label: "Method", kind: "select", options: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
-    { name: "headers", label: "Headers (JSON)", kind: "json", placeholder: '{ "Authorization": "Bearer ..." }' },
-    { name: "body", label: "Body", kind: "textarea", placeholder: '{ "key": "value" }' },
-    { name: "timeoutMs", label: "Timeout (ms)", kind: "number", placeholder: "10000" },
-  ],
+export const httpRequest: NodeDef = {
+  schema: z.object({
+    url: z.string(),
+    method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).default("GET"),
+    headers: z.record(z.string(), z.string()).optional(),
+    body: z.any().optional(),
+    timeoutMs: z.coerce.number().default(10000), // form ส่ง string → coerce
+  }),
+  meta: { label: "HTTP Request", description: "ยิง HTTP request ไปยัง URL ภายนอก" },
+  retries: 2, // network สะดุดชั่วคราว → retry ช่วย
+  outputFields: () => ["status", "ok", "body"],
   run: async (cfg, _input, ctx) => {
-    const { url, method, headers, body, timeoutMs } = schema.parse(cfg);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    ctx.log(`http ${method} ${url}`);
+    const timer = setTimeout(() => controller.abort(), cfg.timeoutMs ?? 10000);
+    const method = cfg.method ?? "GET";
+    ctx.log(`http ${method} ${cfg.url}`);
     try {
-      const res = await fetch(url, {
+      const res = await fetch(cfg.url, {
         method,
-        headers: (coerceSchema(headers) as Record<string, string>) ?? undefined,
-        body: method === "GET" || method === "DELETE" ? undefined : body,
+        headers: { "content-type": "application/json", ...(cfg.headers ?? {}) },
+        body:
+          method !== "GET" && method !== "DELETE" && cfg.body !== undefined
+            ? typeof cfg.body === "string"
+              ? cfg.body
+              : JSON.stringify(cfg.body)
+            : undefined,
         signal: controller.signal,
       });
       const text = await res.text();
-      let parsed: unknown = text;
+      let body: unknown = text;
       try {
-        parsed = JSON.parse(text);
+        body = JSON.parse(text);
       } catch {
-        /* keep text */
+        /* ไม่ใช่ JSON → เก็บเป็น text */
       }
-      return ok({ status: res.status, ok: res.ok, body: parsed });
-    } catch (e) {
-      const msg = e instanceof Error && e.name === "AbortError" ? `timeout after ${timeoutMs}ms` : String(e);
-      return fail(msg);
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
+      return ok({ status: res.status, ok: res.ok, body });
     } finally {
       clearTimeout(timer);
     }
