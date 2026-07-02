@@ -56,14 +56,21 @@ export const workflowRun = inngest.createFunction(
       throw new NonRetriableError("workflow.run requires workflowId or graph");
     });
 
-    const runId =
-      providedRunId ??
-      (await step.run("create-run", async () => {
-        const run = await prisma.run.create({
-          data: { workflowId: resolved.workflowId, status: "running", trigger },
+    const runId = providedRunId
+      ? (
+          await step.run("mark-running", () =>
+            prisma.run.update({
+              where: { id: providedRunId },
+              data: { status: "running" },
+            }),
+          )
+        ).id
+      : await step.run("create-run", async () => {
+          const run = await prisma.run.create({
+            data: { workflowId: resolved.workflowId, status: "running", trigger },
+          });
+          return run.id;
         });
-        return run.id;
-      }));
 
     // inngest step.run คืน Jsonify<T> (serialize) — cast กลับเป็น T
     // (ค่าที่ส่งคืนเป็น JSON อยู่แล้ว เช่น Envelope จึงปลอดภัย)

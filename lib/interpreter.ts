@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 import { registry } from "@/lib/nodes/registry";
+import { resolveConfig } from "@/lib/template";
+import { capJson } from "@/lib/runs";
 import {
   GraphSchema,
   ok,
@@ -12,20 +14,17 @@ import {
 } from "@/lib/graph";
 import type { Prisma } from "@prisma/client";
 
-/**
- * StepRunner = ตัวห่อการรันแต่ละ step.
- * - production: ใช้ inngest `step.run` (durable + retry)
- * - test/local: directRunner เรียก fn ตรง ๆ
- */
 export type StepRunner = <T>(id: string, fn: () => Promise<T>) => Promise<T>;
 
-const directRunner: StepRunner = (_id, fn) => fn();
+export const directRunner: StepRunner = (_id, fn) => fn();
 
 export type RunWorkflowArgs = {
   graph: unknown;
   runId: string;
   payload?: Record<string, unknown>;
   step?: StepRunner;
+  startNodeId?: string;
+  stopNodeId?: string;
 };
 
 export type RunWorkflowResult = {
@@ -42,7 +41,6 @@ function outgoing(edges: Edge[], nodeId: string): Edge[] {
   return edges.filter((e) => e.from === nodeId);
 }
 
-/** หา node เริ่มต้น: ชอบ type "trigger" → ไม่มี edge เข้า → node แรก */
 function findStart(graph: Graph): Node | undefined {
   const trigger = graph.nodes.find((n) => n.type === "trigger");
   if (trigger) return trigger;
@@ -51,7 +49,6 @@ function findStart(graph: Graph): Node | undefined {
   return root ?? graph.nodes[0];
 }
 
-/** ตัด field ภายใน (__branch) ออกก่อนส่ง envelope ต่อให้ node ถัดไป */
 function forward(output: Envelope): Envelope {
   if (!("__branch" in output.data)) return output;
   const { __branch, ...rest } = output.data;
@@ -59,7 +56,6 @@ function forward(output: Envelope): Envelope {
   return { ...output, data: rest };
 }
 
-/** เลือก edge ถัดไปจากผล node (รองรับ branch ของ if และ default path) */
 function nextEdges(edges: Edge[], node: Node, output: Envelope): Edge[] {
   const out = outgoing(edges, node.id);
   const branch = output.data.__branch;
@@ -69,25 +65,19 @@ function nextEdges(edges: Edge[], node: Node, output: Envelope): Edge[] {
   return out.filter((e) => e.label !== "error");
 }
 
-/**
- * เดิน graph จาก trigger ตาม edge → เรียก registry[type].run() ทุก node →
- * เขียน NodeRun → ส่ง output เป็น input ของ node ถัดไป.
- *
- * Error policy ต่อ node (`onError`):
- *  - stop      หยุดทั้ง run + status=failed
- *  - continue  ข้าม node ที่พัง (ไม่เดินต่อจาก node นั้น) แต่ run ไม่ fail
- *  - route     เดินต่อไป edge ที่ label = "error"
- */
 export async function runWorkflow({
   graph: rawGraph,
   runId,
   payload = {},
   step = directRunner,
+  startNodeId,
+  stopNodeId,
 }: RunWorkflowArgs): Promise<RunWorkflowResult> {
   const graph = GraphSchema.parse(rawGraph);
   const nodesById = new Map(graph.nodes.map((n) => [n.id, n]));
 
-  const start = findStart(graph);
+  const start =
+    (startNodeId ? nodesById.get(startNodeId) : undefined) ?? findStart(graph);
   if (!start) {
     await step("finalize", async () => {
       await prisma.run.update({ where: { id: runId }, data: { status: "failed" } });
@@ -100,6 +90,7 @@ export async function runWorkflow({
     { nodeId: start.id, input: ok(payload) },
   ];
   const visited = new Set<string>();
+  const outputs: Record<string, unknown> = {};
   let runStatus: "success" | "failed" = "success";
   let nodeRuns = 0;
 
@@ -121,30 +112,39 @@ export async function runWorkflow({
         nodeId,
         log: (m) => console.log(`[run ${runId} · ${nodeId}] ${m}`),
       };
+      const { config: resolvedConfig, missing } = resolveConfig(node.config, {
+        steps: outputs,
+        data: input.data,
+      });
+      if (missing.length > 0) {
+        console.warn(`[${runId}/${nodeId}] template paths not found: ${missing.join(", ")}`);
+      }
       try {
-        // แต่ละ node = 1 step (durable + retry เมื่อ throw)
-        output = await step(nodeId, () => def.run(node.config, input, ctx));
+        output = await step(nodeId, () => def.run(resolvedConfig, input, ctx));
       } catch (e) {
-        // ครบ retries แล้วยัง throw → interpreter จับเป็น failed
         output = fail(errMsg(e));
       }
     }
 
-    // เขียน NodeRun (ห่อใน step เพื่อกันเขียนซ้ำตอน retry)
     await step(`${nodeId}:log`, async () => {
       await prisma.nodeRun.create({
         data: {
           runId,
           nodeId,
           status: output.status,
-          input: input as unknown as Prisma.InputJsonValue,
-          output: output as unknown as Prisma.InputJsonValue,
+          input: capJson(input) as Prisma.InputJsonValue,
+          output: capJson(output) as Prisma.InputJsonValue,
           error: output.error ?? null,
         },
       });
       return null;
     });
     nodeRuns++;
+    outputs[nodeId] = output.data;
+
+    if (stopNodeId && node.id === stopNodeId) {
+      break;
+    }
 
     if (output.status === "failed") {
       if (node.onError === "stop") {
@@ -152,9 +152,8 @@ export async function runWorkflow({
         break;
       }
       if (node.onError === "continue") {
-        continue; // ข้าม ไม่เดินต่อจาก node นี้
+        continue;
       }
-      // route → ไป edge label "error"
       for (const e of outgoing(graph.edges, nodeId).filter((e) => e.label === "error")) {
         queue.push({ nodeId: e.to, input: forward(output) });
       }

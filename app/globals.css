@@ -1,26 +1,185 @@
 @import "tailwindcss";
 
+/* ============================================================
+   DESIGN SYSTEM — pastel light theme
+   Semantic tokens (single source of truth). ใช้ผ่าน utilities
+   เช่น bg-surface / text-muted / border-border / bg-primary
+   ============================================================ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  /* chrome */
+  --background: #f7f6fc;       /* page background (soft lavender white) */
+  --surface: #ffffff;          /* cards / panels */
+  --surface-2: #fbfaff;        /* subtly raised */
+  --surface-muted: #f2effb;    /* hover / inset fills */
+  --border: #ece8f6;           /* soft dividers */
+  --border-strong: #ddd6ef;    /* emphasised borders */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  /* text */
+  --foreground: #2e2a44;       /* primary text (deep plum-slate) */
+  --muted: #736e8f;            /* secondary text */
+  --muted-2: #9a95b5;          /* tertiary / hints */
+
+  /* brand */
+  --primary: #8b7cf0;          /* pastel violet */
+  --primary-hover: #7b6aec;
+  --primary-foreground: #ffffff;
+  --primary-soft: #ede9fe;     /* soft violet fill */
+  --accent: #d9b8f5;           /* pastel fuchsia-lavender */
+  --ring: rgba(139, 124, 240, 0.32);
+
+  /* status (pastel) */
+  --success: #6fcf97;
+  --warning: #f2c879;
+  --danger: #f28b98;
+  --info: #8fc7f0;
+
+  --radius: 0.875rem;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* expose tokens as Tailwind color/utility values */
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-2: var(--muted-2);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-accent: var(--accent);
+  --color-ring: var(--ring);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  box-sizing: border-box;
+  border-color: var(--border);
+}
+
+html {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 12% -8%, rgba(167, 139, 250, 0.18), transparent 32%),
+    radial-gradient(circle at 92% 4%, rgba(147, 197, 253, 0.16), transparent 28%),
+    radial-gradient(circle at 60% 100%, rgba(244, 194, 244, 0.14), transparent 34%),
+    linear-gradient(180deg, #faf9ff 0%, #f4f2fb 100%);
+  background-attachment: fixed;
 }
 
 body {
-  background: var(--background);
+  min-height: 100vh;
+  background: transparent;
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(139, 124, 240, 0.22);
+  color: var(--foreground);
+}
+
+/* soft custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #e0dcef;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #cfc7e6;
+  background-clip: content-box;
+}
+
+/* ============================================================
+   DESIGN SYSTEM — reusable component classes (global)
+   ใช้ซ้ำได้ทั้งแอป แทนการเขียน Tailwind ยาว ๆ ซ้ำ ๆ
+   ============================================================ */
+@layer components {
+  /* surface / panel */
+  .ds-panel {
+    @apply rounded-2xl border border-border bg-surface shadow-sm shadow-violet-100/40;
+  }
+  .ds-panel-muted {
+    @apply rounded-xl border border-border bg-surface-muted;
+  }
+
+  /* brand gradient mark (ปรับขนาด/rounded เพิ่มเองที่จุดใช้งาน) */
+  .ds-brand {
+    @apply flex items-center justify-center rounded-xl bg-gradient-to-br from-violet-400 to-fuchsia-400 text-white shadow-sm shadow-violet-300/50;
+  }
+  .text-gradient-brand {
+    @apply bg-gradient-to-br from-violet-500 to-fuchsia-500 bg-clip-text text-transparent;
+  }
+
+  /* form controls */
+  .ds-input {
+    @apply w-full rounded-xl border border-border bg-surface px-3 py-2 text-[13px] text-foreground outline-none transition placeholder:text-muted-2 focus:border-violet-300 focus:ring-4 focus:ring-ring;
+  }
+  .ds-input-mono {
+    @apply w-full rounded-xl border border-border bg-surface-2 px-3 py-2 font-mono text-[13px] text-foreground outline-none transition placeholder:text-muted-2 focus:border-violet-300 focus:ring-4 focus:ring-ring;
+  }
+
+  /* buttons */
+  .ds-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium outline-none transition focus-visible:ring-4 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .ds-btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium outline-none transition focus-visible:ring-4 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 bg-gradient-to-br from-violet-400 to-fuchsia-400 text-white shadow-sm shadow-violet-300/40 hover:from-violet-500 hover:to-fuchsia-500;
+  }
+  .ds-btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium outline-none transition focus-visible:ring-4 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 border border-border bg-surface text-foreground shadow-sm hover:bg-surface-muted;
+  }
+  .ds-btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium outline-none transition focus-visible:ring-4 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 text-muted hover:bg-surface-muted hover:text-foreground;
+  }
+
+  /* small bits */
+  .ds-chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] font-medium text-muted transition;
+  }
+  .ds-kbd {
+    @apply rounded-md border border-border bg-surface-muted px-1.5 py-0.5 text-[10px] text-muted-2;
+  }
+  .ds-label {
+    @apply mb-2 block text-[12px] font-semibold text-foreground;
+  }
+  .ds-section-title {
+    @apply text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-2;
+  }
+}
+
+/* ============================================================
+   React Flow — light pastel overrides
+   ============================================================ */
+.react-flow__attribution {
+  display: none;
+}
+.react-flow__edge-path {
+  stroke: #c4b5fd;
+}
+.react-flow__controls-button {
+  background: #ffffff;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+.react-flow__controls-button:hover {
+  background: var(--surface-muted);
+}
+.react-flow__controls-button svg {
+  fill: currentColor;
 }

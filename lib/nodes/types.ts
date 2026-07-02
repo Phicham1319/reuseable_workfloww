@@ -8,11 +8,18 @@ import type { NodeDef } from "@/lib/graph";
 export type FieldSpec = {
   name: string;
   label: string;
-  kind: "text" | "textarea" | "number" | "boolean" | "select" | "json";
+  kind: "text" | "textarea" | "number" | "boolean" | "select" | "json" | "slider";
   options?: string[];
   placeholder?: string;
   required?: boolean;
   help?: string;
+  /** สำหรับ kind "slider" */
+  min?: number;
+  max?: number;
+  step?: number;
+  minLabel?: string;
+  maxLabel?: string;
+  default?: number;
 };
 
 /** NodeDef + descriptor ฟอร์มสำหรับ canvas (ขยายจาก contract โดยไม่แตะ shape เดิม) */

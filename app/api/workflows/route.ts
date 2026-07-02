@@ -15,8 +15,8 @@ export async function POST(req: Request) {
 
 export async function GET() {
   const workflows = await prisma.workflow.findMany({
-    orderBy: { createdAt: "desc" },
-    select: { id: true, name: true, createdAt: true },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, name: true, createdAt: true, updatedAt: true },
   });
   return Response.json(workflows);
 }

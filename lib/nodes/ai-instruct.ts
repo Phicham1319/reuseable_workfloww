@@ -9,6 +9,7 @@ const schema = z.object({
   prompt: z.string().min(1),
   outputSchema: z.any(),
   model: z.string().default("gpt-4o-mini"),
+  temperature: z.coerce.number().min(0).max(1).default(0.7),
 });
 
 /** เติมตัวแปร {{field}} จาก input.data ลงใน prompt */
@@ -57,22 +58,35 @@ export const aiInstructNode: UiNodeDef = {
       kind: "text",
       placeholder: "gpt-4o-mini",
     },
+    {
+      name: "temperature",
+      label: "Temperature",
+      kind: "slider",
+      min: 0,
+      max: 1,
+      step: 0.1,
+      default: 0.7,
+      minLabel: "Precise",
+      maxLabel: "Creative",
+      help: "ต่ำ = ตอบแม่นยำคงเส้นคงวา, สูง = สร้างสรรค์/หลากหลาย",
+    },
   ],
   run: async (cfg, input, ctx): Promise<Envelope> => {
-    const { prompt, outputSchema, model } = schema.parse(cfg);
+    const { prompt, outputSchema, model, temperature } = schema.parse(cfg);
     const zodSchema = zodFromJson(coerceSchema(outputSchema));
     const finalPrompt = `${interpolate(prompt, input.data)}\n\nInput data:\n${JSON.stringify(
       input.data,
       null,
       2,
     )}`;
-    ctx.log(`ai.instruct → model=${model}`);
+    ctx.log(`ai.instruct → model=${model} temp=${temperature}`);
 
     // ถ้าผลลัพธ์ไม่ตรง schema generateObject จะ throw (NoObjectGeneratedError)
     const { object } = await generateObject({
       model: openai(model),
       schema: zodSchema,
       prompt: finalPrompt,
+      temperature,
     });
 
     return ok(object as Record<string, unknown>);
